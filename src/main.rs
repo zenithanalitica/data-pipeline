@@ -1,5 +1,6 @@
+use confy;
 use neo4rs::{self, Graph, query};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json;
 use std::collections::HashMap;
 use std::env;
@@ -8,10 +9,21 @@ use std::io::{BufReader, prelude::*};
 use tokio;
 use tokio::sync::Semaphore;
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
 struct Credentials {
     uri: String,
     user: String,
     password: String,
+}
+
+impl ::std::default::Default for Credentials {
+    fn default() -> Self {
+        Self {
+            uri: String::from("localhost:7676"),
+            user: String::from("neo4j"),
+            password: String::from("neo4j"),
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -31,24 +43,11 @@ struct Tweet {
 
 #[tokio::main]
 async fn main() {
-    let creds = parse_arguments();
+    // let creds = parse_arguments();
+    let creds: Credentials = confy::load_path("./credentials.toml").unwrap();
 
-    let tweets = readfile("./../../../data/airlines-1558527599826.json".to_string());
+    let tweets = readfile("../data/airlines-1558527599826.json".to_string());
     load_data(creds, tweets).await;
-}
-
-fn parse_arguments() -> Credentials {
-    let args: Vec<String> = env::args().collect();
-
-    let uri = args[1].clone();
-    let user = args[2].clone();
-    let pass = args[3].clone();
-
-    return Credentials {
-        uri,
-        user,
-        password: pass,
-    };
 }
 
 fn readfile(filename: String) -> Vec<Tweet> {
