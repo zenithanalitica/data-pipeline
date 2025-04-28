@@ -6,7 +6,6 @@ use serde_json;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufReader, prelude::*};
-use std::{env, fs};
 use tokio;
 use tokio::sync::Semaphore;
 
@@ -38,23 +37,42 @@ struct Tweet {
     id_str: String,
     text: String,
     user: User,
-    #[serde(rename(serialize = "in_reply_to_status_id_str"))]
-    reply_to: Option<String>,
+    // #[serde(rename(serialize = "in_reply_to_status_id_str"))]
+    // reply_to: Option<String>,
 }
 
 #[tokio::main]
 async fn main() {
     // let creds = parse_arguments();
     let creds: Credentials = confy::load_path("./credentials.toml").unwrap();
+    prepare_database(creds.clone()).await;
 
     for file in glob("../data/*.json").expect("Failed to read glob pattern") {
         let filename = file.unwrap().to_str().unwrap().to_owned();
-        let tweets = readfile(filename);
-        load_data(creds.clone(), tweets).await;
+        let tweets = parse_file(filename);
+        insert_new_tweets(creds.clone(), tweets).await;
     }
 }
 
-fn readfile(filename: String) -> Vec<Tweet> {
+async fn prepare_database(creds: Credentials) {
+    let graph = Graph::new(creds.uri, creds.user, creds.password)
+        .await
+        .unwrap();
+
+    // Run this BEFORE starting any imports to ensure uniqueness of users
+    graph
+        .run(query(
+            "CREATE CONSTRAINT IF NOT EXISTS FOR (u:User) REQUIRE u.id IS UNIQUE",
+        ))
+        .await
+        .unwrap();
+    //
+    // Wait a moment for the constraint to be fully applied
+    println!("Waiting for the constraint to be applied...");
+    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+}
+
+fn parse_file(filename: String) -> Vec<Tweet> {
     println!("Parsing file {}", filename);
     let file = File::open(filename).unwrap();
     let reader = BufReader::new(file);
@@ -74,26 +92,14 @@ fn readfile(filename: String) -> Vec<Tweet> {
     return tweets;
 }
 
-async fn load_data(creds: Credentials, tweets: Vec<Tweet>) {
+async fn insert_new_tweets(creds: Credentials, tweets: Vec<Tweet>) {
     let graph = Graph::new(creds.uri, creds.user, creds.password)
-        .await
-        .unwrap();
-
-    // Run this BEFORE starting any imports to ensure uniqueness of users
-    graph
-        .run(query(
-            "CREATE CONSTRAINT IF NOT EXISTS FOR (u:User) REQUIRE u.id IS UNIQUE",
-        ))
         .await
         .unwrap();
 
     let batch_size = 500; // How many nodes per transaction
     let max_concurrent_batches = 1; // Has to be one in order to eliminate race conditions, but
     // still be async
-
-    // Wait a moment for the constraint to be fully applied
-    println!("Waiting for the constraint to be applied...");
-    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
 
     // Then proceed with concurrent batch processing
     let semaphore = std::sync::Arc::new(Semaphore::new(max_concurrent_batches));
@@ -107,39 +113,47 @@ async fn load_data(creds: Credentials, tweets: Vec<Tweet>) {
         let handle = tokio::spawn(async move {
             let _permit = sem_clone.acquire().await.unwrap();
 
-            let mut txn = graph_clone.start_txn().await.unwrap();
+            let txn = graph_clone.start_txn().await.unwrap();
 
             // Create batch parameters - similar to your current code
             let batch = prepare_batch_parameters(chunk_vec);
 
-            // Execute with error handling to deal with potential constraint violations
-            match txn
-                .run(
-                    query(
-                        "
-            UNWIND $batch AS tweet
-            CREATE (t:Tweet {id: tweet.id, text: tweet.text})
-            MERGE (u:User {id: tweet.userId})
-            ON CREATE SET u.name = tweet.userName
-            CREATE (t)-[:USER]->(u)
-        ",
-                    )
-                    .param("batch", batch),
-                )
-                .await
-            {
-                Ok(_) => match txn.commit().await {
-                    Ok(_) => println!("Batch {} completed successfully", batch_idx),
-                    Err(e) => eprintln!("Failed to commit batch {}: {:?}", batch_idx, e),
-                },
-                Err(e) => eprintln!("Failed to execute batch {}: {:?}", batch_idx, e),
-            }
+            run_insert_query(batch, batch_idx, txn).await;
         });
 
         handles.push(handle);
     }
 
     futures::future::join_all(handles).await;
+}
+
+async fn run_insert_query(
+    batch: Vec<HashMap<String, neo4rs::BoltType>>,
+    batch_idx: usize,
+    mut txn: neo4rs::Txn,
+) {
+    // Execute with error handling to deal with potential constraint violations
+    match txn
+        .run(
+            query(
+                "
+            UNWIND $batch AS tweet
+            CREATE (t:Tweet {id: tweet.id, text: tweet.text})
+            MERGE (u:User {id: tweet.userId})
+            ON CREATE SET u.name = tweet.userName
+            CREATE (t)-[:USER]->(u)
+        ",
+            )
+            .param("batch", batch),
+        )
+        .await
+    {
+        Ok(_) => match txn.commit().await {
+            Ok(_) => println!("Batch {} completed successfully", batch_idx),
+            Err(e) => eprintln!("Failed to commit batch {}: {:?}", batch_idx, e),
+        },
+        Err(e) => eprintln!("Failed to execute batch {}: {:?}", batch_idx, e),
+    }
 }
 
 fn prepare_batch_parameters(chunk_vec: Vec<Tweet>) -> Vec<HashMap<String, neo4rs::BoltType>> {
