@@ -8,6 +8,12 @@ use std::io::{BufReader, prelude::*};
 use tokio;
 use tokio::sync::Semaphore;
 
+struct Credentials {
+    uri: String,
+    user: String,
+    password: String,
+}
+
 #[derive(Debug, Deserialize, Clone)]
 struct User {
     id_str: String,
@@ -25,14 +31,24 @@ struct Tweet {
 
 #[tokio::main]
 async fn main() {
-    let args: Vec<String> = env::args().collect();
-
-    let uri = &args[1];
-    let user = &args[2];
-    let pass = &args[3];
+    let creds = parse_arguments();
 
     let tweets = readfile("./../../../data/airlines-1558527599826.json".to_string());
-    load_data(uri, user, pass, tweets).await;
+    load_data(creds, tweets).await;
+}
+
+fn parse_arguments() -> Credentials {
+    let args: Vec<String> = env::args().collect();
+
+    let uri = args[1].clone();
+    let user = args[2].clone();
+    let pass = args[3].clone();
+
+    return Credentials {
+        uri,
+        user,
+        password: pass,
+    };
 }
 
 fn readfile(filename: String) -> Vec<Tweet> {
@@ -54,8 +70,10 @@ fn readfile(filename: String) -> Vec<Tweet> {
     return tweets;
 }
 
-async fn load_data(uri: &String, user: &String, pass: &String, tweets: Vec<Tweet>) {
-    let graph = Graph::new(uri, user, pass).await.unwrap();
+async fn load_data(creds: Credentials, tweets: Vec<Tweet>) {
+    let graph = Graph::new(creds.uri, creds.user, creds.password)
+        .await
+        .unwrap();
 
     // Run this BEFORE starting any imports to ensure uniqueness of users
     graph
@@ -65,10 +83,12 @@ async fn load_data(uri: &String, user: &String, pass: &String, tweets: Vec<Tweet
         .await
         .unwrap();
 
-    let batch_size = 500; // Adjust based on your needs
-    let max_concurrent_batches = 1; // Adjust based on server capacity
+    let batch_size = 500; // How many nodes per transaction
+    let max_concurrent_batches = 1; // Has to be one in order to eliminate race conditions, but
+    // still be async
 
     // Wait a moment for the constraint to be fully applied
+    println!("Waiting for the constraint to be applied...");
     tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
 
     // Then proceed with concurrent batch processing
