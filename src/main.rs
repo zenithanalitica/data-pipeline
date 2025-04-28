@@ -1,11 +1,12 @@
 use confy;
+use glob::glob;
 use neo4rs::{self, Graph, query};
 use serde::{Deserialize, Serialize};
 use serde_json;
 use std::collections::HashMap;
-use std::env;
 use std::fs::File;
 use std::io::{BufReader, prelude::*};
+use std::{env, fs};
 use tokio;
 use tokio::sync::Semaphore;
 
@@ -46,11 +47,15 @@ async fn main() {
     // let creds = parse_arguments();
     let creds: Credentials = confy::load_path("./credentials.toml").unwrap();
 
-    let tweets = readfile("../data/airlines-1558527599826.json".to_string());
-    load_data(creds, tweets).await;
+    for file in glob("../data/*.json").expect("Failed to read glob pattern") {
+        let filename = file.unwrap().to_str().unwrap().to_owned();
+        let tweets = readfile(filename);
+        load_data(creds.clone(), tweets).await;
+    }
 }
 
 fn readfile(filename: String) -> Vec<Tweet> {
+    println!("Parsing file {}", filename);
     let file = File::open(filename).unwrap();
     let reader = BufReader::new(file);
     let mut tweets = vec![];
