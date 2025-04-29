@@ -162,6 +162,27 @@ async fn run_insert_with_txn(
     Ok(())
 }
 
+pub async fn link_tweets(creds: Credentials) -> Result<(), neo4rs::Error> {
+    println!("Linking tweets together...");
+    let graph = Graph::new(creds.uri, creds.user, creds.password)
+        .await
+        .unwrap();
+
+    let mut txn = graph.start_txn().await?;
+    // Run this BEFORE starting any imports to ensure uniqueness of users
+    txn.run(query(
+        "
+        MATCH (t: Tweet) CREATE (r: Tweet {reply_to: t.id})-[:REPLIES_TO]->(t);
+        ",
+    ))
+    .await
+    .unwrap();
+
+    txn.commit().await?;
+
+    Ok(())
+}
+
 fn prepare_batch_parameters(chunk_vec: Vec<json::Tweet>) -> Vec<HashMap<String, neo4rs::BoltType>> {
     // Build batch parameters
     let batch: Vec<HashMap<String, neo4rs::BoltType>> = chunk_vec
