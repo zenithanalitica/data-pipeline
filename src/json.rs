@@ -40,6 +40,7 @@ pub struct Tweet {
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct Entity {
+    #[serde(deserialize_with = "deserialize_hashtags")]
     pub hashtags: Vec<String>,
     #[serde(deserialize_with = "deserialize_user_mentions")]
     pub user_mentions: Vec<String>,
@@ -90,4 +91,20 @@ where
         })
         .collect();
     Ok(ids)
+}
+
+fn deserialize_hashtags<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let hashtag_maps: Vec<serde_json::Value> = Deserialize::deserialize(deserializer)?;
+    let hashtags = hashtag_maps
+        .into_iter()
+        .filter_map(|mention| {
+            mention
+                .get("text")
+                .and_then(|v| v.as_str().map(|s| s.to_string()))
+        })
+        .collect();
+    Ok(hashtags)
 }
