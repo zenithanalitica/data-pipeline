@@ -1,4 +1,6 @@
+use backoff::{Error as BackoffError, ExponentialBackoff};
 use confy;
+use futures::future;
 use glob::glob;
 use neo4rs::{self, Graph, query};
 use serde::{Deserialize, Serialize};
@@ -6,6 +8,8 @@ use serde_json;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufReader, prelude::*};
+use std::sync::Arc;
+use std::time::Duration;
 use tokio;
 use tokio::sync::Semaphore;
 
@@ -45,7 +49,7 @@ struct Tweet {
 async fn main() {
     // let creds = parse_arguments();
     let creds: Credentials = confy::load_path("./credentials.toml").unwrap();
-    prepare_database(creds.clone()).await;
+    // prepare_database(creds.clone()).await;
 
     for file in glob("../data/*.json").expect("Failed to read glob pattern") {
         let filename = file.unwrap().to_str().unwrap().to_owned();
@@ -96,13 +100,11 @@ async fn insert_new_tweets(creds: Credentials, tweets: Vec<Tweet>) {
     let graph = Graph::new(creds.uri, creds.user, creds.password)
         .await
         .unwrap();
+    let batch_size = 1000; // How many nodes per transaction
+    let max_concurrent_batches = 4; // Limit concurrent transactions
 
-    let batch_size = 500; // How many nodes per transaction
-    let max_concurrent_batches = 1; // Has to be one in order to eliminate race conditions, but
-    // still be async
-
-    // Then proceed with concurrent batch processing
-    let semaphore = std::sync::Arc::new(Semaphore::new(max_concurrent_batches));
+    // Create semaphore for concurrent control
+    let semaphore = Arc::new(Semaphore::new(max_concurrent_batches));
     let mut handles = Vec::new();
 
     for (batch_idx, chunk) in tweets.chunks(batch_size).enumerate() {
@@ -112,48 +114,87 @@ async fn insert_new_tweets(creds: Credentials, tweets: Vec<Tweet>) {
 
         let handle = tokio::spawn(async move {
             let _permit = sem_clone.acquire().await.unwrap();
-
-            let txn = graph_clone.start_txn().await.unwrap();
-
-            // Create batch parameters - similar to your current code
             let batch = prepare_batch_parameters(chunk_vec);
 
-            run_insert_query(batch, batch_idx, txn).await;
+            // Define retry configuration
+            let backoff = ExponentialBackoff {
+                initial_interval: Duration::from_millis(100),
+                max_interval: Duration::from_secs(10),
+                multiplier: 2.0,
+                max_elapsed_time: Some(Duration::from_secs(60)), // Max 1 minute of retries
+                ..ExponentialBackoff::default()
+            };
+
+            // Execute with retry logic
+            match backoff::future::retry(backoff, || async {
+                match run_insert_with_txn(&graph_clone, batch.clone()).await {
+                    Ok(_) => Ok(()),
+                    Err(e) => {
+                        // Check if error is a deadlock error
+                        if is_deadlock_error(&e) {
+                            println!("Deadlock detected in batch {}, will retry", batch_idx);
+                            Err(BackoffError::transient(e))
+                        } else {
+                            // For other errors, don't retry
+                            Err(BackoffError::permanent(e))
+                        }
+                    }
+                }
+            })
+            .await
+            {
+                Ok(_) => println!("Batch {} completed successfully", batch_idx),
+                Err(e) => eprintln!(
+                    "Failed to process batch {} after all retries: {:?}",
+                    batch_idx, e
+                ),
+            }
         });
 
         handles.push(handle);
     }
 
-    futures::future::join_all(handles).await;
+    // Wait for all batches to complete
+    future::join_all(handles).await;
 }
 
-async fn run_insert_query(
+// Helper function to detect if an error is a deadlock error
+fn is_deadlock_error(error: &neo4rs::Error) -> bool {
+    // Neo4j deadlock errors typically contain specific codes or text
+    // This is a common pattern, adjust based on actual error details
+    let error_string = format!("{:?}", error);
+    error_string.contains("DeadlockDetected")
+        || error_string.contains("TransactionTerminatedException")
+        || error_string.contains("concurrent access")
+        || error_string.contains("deadlock")
+}
+
+// Separated transaction execution function for retry logic
+async fn run_insert_with_txn(
+    graph: &Graph,
     batch: Vec<HashMap<String, neo4rs::BoltType>>,
-    batch_idx: usize,
-    mut txn: neo4rs::Txn,
-) {
-    // Execute with error handling to deal with potential constraint violations
-    match txn
-        .run(
-            query(
-                "
+) -> Result<(), neo4rs::Error> {
+    let mut txn = graph.start_txn().await?;
+
+    // Run the query
+    txn.run(
+        query(
+            "
             UNWIND $batch AS tweet
             CREATE (t:Tweet {id: tweet.id, text: tweet.text})
             MERGE (u:User {id: tweet.userId})
             ON CREATE SET u.name = tweet.userName
-            CREATE (t)-[:USER]->(u)
-        ",
-            )
-            .param("batch", batch),
+            CREATE (t)-[:CREATED_BY]->(u)
+            ",
         )
-        .await
-    {
-        Ok(_) => match txn.commit().await {
-            Ok(_) => println!("Batch {} completed successfully", batch_idx),
-            Err(e) => eprintln!("Failed to commit batch {}: {:?}", batch_idx, e),
-        },
-        Err(e) => eprintln!("Failed to execute batch {}: {:?}", batch_idx, e),
-    }
+        .param("batch", batch),
+    )
+    .await?;
+
+    // Commit the transaction
+    txn.commit().await?;
+
+    Ok(())
 }
 
 fn prepare_batch_parameters(chunk_vec: Vec<Tweet>) -> Vec<HashMap<String, neo4rs::BoltType>> {
