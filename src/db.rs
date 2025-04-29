@@ -155,8 +155,8 @@ async fn run_insert_with_txn(
                 t.retweet_count = tweet.retweet_count,
                 t.favorite_count = tweet.favorite_count,
                 t.filter_level = tweet.filter_level,
-                t.lang = tweet.lang
-                t.hashtags = tweet.hashtags
+                t.lang = tweet.lang,
+                t.hashtags = tweet.hashtags,
                 t.user_mentions = tweet.user_mentions
             MERGE (u:User {id: tweet.userId})
             ON CREATE SET 
@@ -170,7 +170,7 @@ async fn run_insert_with_txn(
                 u.statuses_count = tweet.userStatusesCount,
                 u.created_at = tweet.userCreatedAt,
                 u.utc_offset = tweet.userUtcOffset
-            CREATE (t)-[:CREATED_BY]->(u)
+            CREATE (t)-[:POSTED_BY]->(u)
             ",
         )
         .param("batch", batch),
