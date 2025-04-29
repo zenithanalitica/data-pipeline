@@ -64,8 +64,8 @@ pub async fn insert_new_tweets(creds: Credentials, tweets: Vec<json::Tweet>) {
         .await
         .unwrap();
 
-    let batch_size = 1000; // How many nodes per transaction
-    let max_concurrent_batches = 4; // Limit concurrent transactions
+    let batch_size = 500; // How many nodes per transaction
+    let max_concurrent_batches = 8; // Limit concurrent transactions
 
     // Create semaphore for concurrent control
     let semaphore = Arc::new(Semaphore::new(max_concurrent_batches));
@@ -190,10 +190,12 @@ pub async fn link_tweets(creds: Credentials) -> Result<(), neo4rs::Error> {
         .unwrap();
 
     let mut txn = graph.start_txn().await?;
-    // Run this BEFORE starting any imports to ensure uniqueness of users
     txn.run(query(
         "
-        MATCH (t: Tweet) CREATE (r: Tweet {reply_to: t.id})-[:REPLIES_TO]->(t);
+        MATCH (t1:Tweet)
+        WHERE t1.reply_to IS NOT NULL
+        MATCH (t2:Tweet {id: t1.reply_to})
+        MERGE (t1)-[:REPLIES_TO]->(t2);        
         ",
     ))
     .await
