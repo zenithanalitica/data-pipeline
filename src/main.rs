@@ -7,7 +7,7 @@ mod json;
 #[tokio::main]
 async fn main() {
     let creds: db::Credentials = confy::load_path("./credentials.toml").unwrap();
-    db::prepare_database(creds.clone()).await;
+    db::prepare_database(creds.clone()).await.unwrap();
 
     for file in glob("../data/*.json").expect("Failed to read glob pattern") {
         let filename = file.unwrap().to_str().unwrap().to_owned();

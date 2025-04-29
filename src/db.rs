@@ -27,31 +27,43 @@ impl ::std::default::Default for Credentials {
     }
 }
 
-pub async fn prepare_database(creds: Credentials) {
+pub async fn prepare_database(creds: Credentials) -> Result<(), neo4rs::Error> {
     let graph = Graph::new(creds.uri, creds.user, creds.password)
         .await
         .unwrap();
 
+    let mut txn = graph.start_txn().await?;
     // Run this BEFORE starting any imports to ensure uniqueness of users
-    graph
-        .run(query(
-            "
+    txn.run(query(
+        "
             CREATE CONSTRAINT IF NOT EXISTS FOR (u:User) REQUIRE u.id IS UNIQUE;
+            ",
+    ))
+    .await
+    .unwrap();
+
+    txn.run(query(
+        "
             CREATE CONSTRAINT IF NOT EXISTS FOR (t:Tweet) REQUIRE t.id IS UNIQUE;
             ",
-        ))
-        .await
-        .unwrap();
-    //
+    ))
+    .await
+    .unwrap();
+
+    txn.commit().await?;
+
     // Wait a moment for the constraint to be fully applied
     println!("Waiting for the constraint to be applied...");
-    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+
+    Ok(())
 }
 
 pub async fn insert_new_tweets(creds: Credentials, tweets: Vec<json::Tweet>) {
     let graph = Graph::new(creds.uri, creds.user, creds.password)
         .await
         .unwrap();
+
     let batch_size = 1000; // How many nodes per transaction
     let max_concurrent_batches = 4; // Limit concurrent transactions
 
@@ -133,7 +145,7 @@ async fn run_insert_with_txn(
         query(
             "
             UNWIND $batch AS tweet
-            CREATE (t:Tweet {id: tweet.id, text: tweet.text})
+            MERGE (t:Tweet {id: tweet.id, text: tweet.text})
             MERGE (u:User {id: tweet.userId})
             ON CREATE SET u.name = tweet.userName
             CREATE (t)-[:CREATED_BY]->(u)
