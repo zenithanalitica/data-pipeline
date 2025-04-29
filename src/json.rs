@@ -35,12 +35,14 @@ pub struct Tweet {
     pub favorite_count: u32,
     pub filter_level: String,
     pub lang: String,
+    pub entities: Entity,
 }
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct Entity {
     pub hashtags: Vec<String>,
-    pub user_mentions: Vec<User>,
+    #[serde(deserialize_with = "deserialize_user_mentions")]
+    pub user_mentions: Vec<String>,
 }
 
 pub fn parse_file(filename: String) -> Vec<Tweet> {
@@ -72,4 +74,20 @@ where
     DateTime::parse_from_str(s, "%a %b %d %H:%M:%S %z %Y")
         .map(|dt| dt.with_timezone(&Utc))
         .map_err(serde::de::Error::custom)
+}
+
+fn deserialize_user_mentions<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let mentions: Vec<serde_json::Value> = Deserialize::deserialize(deserializer)?;
+    let ids = mentions
+        .into_iter()
+        .filter_map(|mention| {
+            mention
+                .get("id_str")
+                .and_then(|v| v.as_str().map(|s| s.to_string()))
+        })
+        .collect();
+    Ok(ids)
 }
