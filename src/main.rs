@@ -66,7 +66,10 @@ async fn prepare_database(creds: Credentials) {
     // Run this BEFORE starting any imports to ensure uniqueness of users
     graph
         .run(query(
-            "CREATE CONSTRAINT IF NOT EXISTS FOR (u:User) REQUIRE u.id IS UNIQUE",
+            "
+            CREATE CONSTRAINT IF NOT EXISTS FOR (u:User) REQUIRE u.id IS UNIQUE;
+            CREATE CONSTRAINT IF NOT EXISTS FOR (t:Tweet) REQUIRE t.id IS UNIQUE;
+            ",
         ))
         .await
         .unwrap();
