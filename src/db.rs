@@ -156,6 +156,7 @@ async fn run_insert_with_txn(
                 t.favorite_count = tweet.favorite_count,
                 t.filter_level = tweet.filter_level,
                 t.lang = tweet.lang
+                t.hashtags = tweet.hashtags
             MERGE (u:User {id: tweet.userId})
             ON CREATE SET 
                 u.name = tweet.userName,
@@ -226,6 +227,7 @@ fn prepare_batch_parameters(chunk_vec: Vec<json::Tweet>) -> Vec<HashMap<String, 
                 tweet.filter_level.clone().into(),
             );
             tweet_map.insert("lang".to_string(), tweet.lang.clone().into());
+            tweet_map.insert("hashtags".to_string(), tweet.entity.hashtags.clone().into());
 
             // User fields
             tweet_map.insert("userId".to_string(), tweet.user.id_str.clone().into());
