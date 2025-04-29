@@ -14,8 +14,8 @@ pub struct Tweet {
     pub id_str: String,
     pub text: String,
     pub user: User,
-    // #[serde(rename(serialize = "in_reply_to_status_id_str"))]
-    // reply_to: Option<String>,
+    #[serde(rename = "in_reply_to_status_id_str")]
+    pub reply_to: Option<String>,
 }
 
 pub fn parse_file(filename: String) -> Vec<Tweet> {

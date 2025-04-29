@@ -146,6 +146,7 @@ async fn run_insert_with_txn(
             "
             UNWIND $batch AS tweet
             MERGE (t:Tweet {id: tweet.id, text: tweet.text})
+            SET t.reply_to = tweet.reply_to
             MERGE (u:User {id: tweet.userId})
             ON CREATE SET u.name = tweet.userName
             CREATE (t)-[:CREATED_BY]->(u)
@@ -169,7 +170,7 @@ fn prepare_batch_parameters(chunk_vec: Vec<json::Tweet>) -> Vec<HashMap<String, 
             let mut tweet_map = HashMap::new();
             tweet_map.insert("id".to_string(), tweet.id_str.clone().into());
             tweet_map.insert("text".to_string(), tweet.text.clone().into());
-            // tweet_map.insert("reply_to".to_string(), tweet.reply_to.clone().into());
+            tweet_map.insert("reply_to".to_string(), tweet.reply_to.clone().into());
             tweet_map.insert("userId".to_string(), tweet.user.id_str.clone().into());
             tweet_map.insert("userName".to_string(), tweet.user.name.clone().into());
             tweet_map
