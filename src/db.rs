@@ -145,10 +145,29 @@ async fn run_insert_with_txn(
         query(
             "
             UNWIND $batch AS tweet
-            MERGE (t:Tweet {id: tweet.id, text: tweet.text})
-            SET t.reply_to = tweet.reply_to
+            MERGE (t:Tweet {id: tweet.id})
+            SET 
+                t.text = tweet.text,
+                t.created_at = tweet.created_at,
+                t.reply_to = tweet.reply_to,
+                t.quote_count = tweet.quote_count,
+                t.reply_count = tweet.reply_count,
+                t.retweet_count = tweet.retweet_count,
+                t.favorite_count = tweet.favorite_count,
+                t.filter_level = tweet.filter_level,
+                t.lang = tweet.lang
             MERGE (u:User {id: tweet.userId})
-            ON CREATE SET u.name = tweet.userName
+            ON CREATE SET 
+                u.name = tweet.userName,
+                u.location = tweet.userLocation,
+                u.verified = tweet.userVerified,
+                u.followers_count = tweet.userFollowersCount,
+                u.friends_count = tweet.userFriendsCount,
+                u.listed_count = tweet.userListedCount,
+                u.favourites_count = tweet.userFavouritesCount,
+                u.statuses_count = tweet.userStatusesCount,
+                u.created_at = tweet.userCreatedAt,
+                u.utc_offset = tweet.userUtcOffset
             CREATE (t)-[:CREATED_BY]->(u)
             ",
         )
@@ -189,11 +208,61 @@ fn prepare_batch_parameters(chunk_vec: Vec<json::Tweet>) -> Vec<HashMap<String, 
         .iter()
         .map(|tweet| {
             let mut tweet_map = HashMap::new();
+
+            // Tweet fields
             tweet_map.insert("id".to_string(), tweet.id_str.clone().into());
             tweet_map.insert("text".to_string(), tweet.text.clone().into());
+            tweet_map.insert(
+                "created_at".to_string(),
+                tweet.created_at.to_rfc3339().into(),
+            );
             tweet_map.insert("reply_to".to_string(), tweet.reply_to.clone().into());
+            tweet_map.insert("quote_count".to_string(), tweet.quote_count.into());
+            tweet_map.insert("reply_count".to_string(), tweet.reply_count.into());
+            tweet_map.insert("retweet_count".to_string(), tweet.retweet_count.into());
+            tweet_map.insert("favorite_count".to_string(), tweet.favorite_count.into());
+            tweet_map.insert(
+                "filter_level".to_string(),
+                tweet.filter_level.clone().into(),
+            );
+            tweet_map.insert("lang".to_string(), tweet.lang.clone().into());
+
+            // User fields
             tweet_map.insert("userId".to_string(), tweet.user.id_str.clone().into());
-            tweet_map.insert("userName".to_string(), tweet.user.name.clone().into());
+            tweet_map.insert(
+                "userName".to_string(),
+                tweet.user.screen_name.clone().into(),
+            );
+            tweet_map.insert(
+                "userLocation".to_string(),
+                tweet.user.location.clone().into(),
+            );
+            tweet_map.insert("userVerified".to_string(), tweet.user.verified.into());
+            tweet_map.insert(
+                "userFollowersCount".to_string(),
+                tweet.user.followers_count.into(),
+            );
+            tweet_map.insert(
+                "userFriendsCount".to_string(),
+                tweet.user.friends_count.into(),
+            );
+            tweet_map.insert(
+                "userListedCount".to_string(),
+                tweet.user.listed_count.into(),
+            );
+            tweet_map.insert(
+                "userFavouritesCount".to_string(),
+                tweet.user.favourites_count.into(),
+            );
+            tweet_map.insert(
+                "userStatusesCount".to_string(),
+                tweet.user.statuses_count.into(),
+            );
+            tweet_map.insert(
+                "userCreatedAt".to_string(),
+                tweet.user.created_at.to_rfc3339().into(),
+            );
+            tweet_map.insert("userUtcOffset".to_string(), tweet.user.utc_offset.into());
             tweet_map
         })
         .collect();
