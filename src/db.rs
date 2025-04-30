@@ -192,10 +192,18 @@ pub async fn link_tweets(creds: Credentials) -> Result<(), neo4rs::Error> {
     let mut txn = graph.start_txn().await?;
     txn.run(query(
         "
-        MATCH (t1:Tweet)
-        WHERE t1.reply_to IS NOT NULL
-        MATCH (t2:Tweet {id: t1.reply_to})
-        MERGE (t1)-[:REPLIES_TO]->(t2);        
+        CALL apoc.periodic.iterate(
+          '
+          MATCH (t1:Tweet)
+          WHERE t1.reply_to IS NOT NULL
+          RETURN t1
+          ',
+          '
+          MATCH (t2:Tweet {id: t1.reply_to})
+          MERGE (t1)-[:REPLIES_TO]->(t2)
+          ',
+          {batchSize: 10000, parallel: false}
+        );
         ",
     ))
     .await
