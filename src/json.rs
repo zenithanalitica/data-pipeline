@@ -46,15 +46,17 @@ pub struct Entity {
     pub user_mentions: Vec<String>,
 }
 
-pub fn parse_file(filename: String) -> Vec<Tweet> {
+pub fn parse_file(filename: String) -> (Vec<Tweet>, u32) {
     println!("Parsing file {}", filename);
     let file = File::open(filename).unwrap();
     let reader = BufReader::new(file);
     let mut tweets = vec![];
+    let mut deleted = 0;
 
     for line in reader.lines() {
         let content = line.unwrap();
         if content.contains("\"delete\":") {
+            deleted += 1;
             continue;
         }
 
@@ -63,7 +65,7 @@ pub fn parse_file(filename: String) -> Vec<Tweet> {
             Err(e) => eprintln!("Failed to parse line: {}", e),
         }
     }
-    return tweets;
+    return (tweets, deleted);
 }
 
 fn deserialize_twitter_date<'de, D>(deserializer: D) -> Result<DateTime<Utc>, D::Error>
