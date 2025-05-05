@@ -30,10 +30,8 @@ pub struct Tweet {
     #[serde(rename = "in_reply_to_status_id_str")]
     pub reply_to: Option<String>,
     pub quote_count: u32,
-    pub reply_count: u32,
     pub retweet_count: u32,
     pub favorite_count: u32,
-    pub filter_level: String,
     pub lang: String,
     pub entities: Entity,
 }

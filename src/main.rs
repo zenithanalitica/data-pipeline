@@ -20,4 +20,5 @@ async fn main() {
 
     db::add_replies_to_relation(creds.clone()).await.unwrap();
     db::add_user_mention_relation(creds.clone()).await.unwrap();
+    println!("Done!")
 }
