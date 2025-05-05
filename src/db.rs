@@ -214,6 +214,36 @@ pub async fn link_tweets(creds: Credentials) -> Result<(), neo4rs::Error> {
     Ok(())
 }
 
+pub async fn add_user_mention_relation(creds: Credentials) -> Result<(), neo4rs::Error> {
+    println!("Adding user mentions...");
+    let graph = Graph::new(creds.uri, creds.user, creds.password)
+        .await
+        .unwrap();
+
+    let mut txn = graph.start_txn().await?;
+    txn.run(query(
+        "
+        CALL apoc.periodic.iterate(
+          '
+          match (t: Tweet) with t, 
+          t.user_mentions as m UNWIND m as uid 
+          match (u: User {id: uid}) return t, u
+          ',
+          '
+          MERGE (t)-[:MENTIONS]->(u)
+          ',
+          {batchSize: 10000, parallel: false}
+        );
+        ",
+    ))
+    .await
+    .unwrap();
+
+    txn.commit().await?;
+
+    Ok(())
+}
+
 fn prepare_batch_parameters(chunk_vec: Vec<json::Tweet>) -> Vec<HashMap<String, neo4rs::BoltType>> {
     // Build batch parameters
     let batch: Vec<HashMap<String, neo4rs::BoltType>> = chunk_vec

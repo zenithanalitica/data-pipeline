@@ -19,4 +19,5 @@ async fn main() {
     println!("Number of deleted tweets: {}", deleted_tweets);
 
     db::link_tweets(creds.clone()).await.unwrap();
+    db::add_user_mention_relation(creds.clone()).await.unwrap();
 }
