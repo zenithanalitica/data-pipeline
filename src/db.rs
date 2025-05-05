@@ -183,7 +183,7 @@ async fn run_insert_with_txn(
     Ok(())
 }
 
-pub async fn link_tweets(creds: Credentials) -> Result<(), neo4rs::Error> {
+pub async fn add_replies_to_relation(creds: Credentials) -> Result<(), neo4rs::Error> {
     println!("Linking tweets together...");
     let graph = Graph::new(creds.uri, creds.user, creds.password)
         .await
