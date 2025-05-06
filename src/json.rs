@@ -30,30 +30,31 @@ pub struct Tweet {
     #[serde(rename = "in_reply_to_status_id_str")]
     pub reply_to: Option<String>,
     pub quote_count: u32,
-    pub reply_count: u32,
     pub retweet_count: u32,
     pub favorite_count: u32,
-    pub filter_level: String,
     pub lang: String,
     pub entities: Entity,
 }
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct Entity {
+    #[serde(deserialize_with = "deserialize_hashtags")]
     pub hashtags: Vec<String>,
     #[serde(deserialize_with = "deserialize_user_mentions")]
     pub user_mentions: Vec<String>,
 }
 
-pub fn parse_file(filename: String) -> Vec<Tweet> {
+pub fn parse_file(filename: String) -> (Vec<Tweet>, u32) {
     println!("Parsing file {}", filename);
     let file = File::open(filename).unwrap();
     let reader = BufReader::new(file);
     let mut tweets = vec![];
+    let mut deleted = 0;
 
     for line in reader.lines() {
         let content = line.unwrap();
         if content.contains("\"delete\":") {
+            deleted += 1;
             continue;
         }
 
@@ -62,7 +63,7 @@ pub fn parse_file(filename: String) -> Vec<Tweet> {
             Err(e) => eprintln!("Failed to parse line: {}", e),
         }
     }
-    return tweets;
+    return (tweets, deleted);
 }
 
 fn deserialize_twitter_date<'de, D>(deserializer: D) -> Result<DateTime<Utc>, D::Error>
@@ -90,4 +91,20 @@ where
         })
         .collect();
     Ok(ids)
+}
+
+fn deserialize_hashtags<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let hashtag_maps: Vec<serde_json::Value> = Deserialize::deserialize(deserializer)?;
+    let hashtags = hashtag_maps
+        .into_iter()
+        .filter_map(|mention| {
+            mention
+                .get("text")
+                .and_then(|v| v.as_str().map(|s| s.to_string()))
+        })
+        .collect();
+    Ok(hashtags)
 }

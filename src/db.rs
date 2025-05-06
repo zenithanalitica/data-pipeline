@@ -64,8 +64,8 @@ pub async fn insert_new_tweets(creds: Credentials, tweets: Vec<json::Tweet>) {
         .await
         .unwrap();
 
-    let batch_size = 1000; // How many nodes per transaction
-    let max_concurrent_batches = 4; // Limit concurrent transactions
+    let batch_size = 500; // How many nodes per transaction
+    let max_concurrent_batches = 8; // Limit concurrent transactions
 
     // Create semaphore for concurrent control
     let semaphore = Arc::new(Semaphore::new(max_concurrent_batches));
@@ -151,12 +151,10 @@ async fn run_insert_with_txn(
                 t.created_at = tweet.created_at,
                 t.reply_to = tweet.reply_to,
                 t.quote_count = tweet.quote_count,
-                t.reply_count = tweet.reply_count,
                 t.retweet_count = tweet.retweet_count,
                 t.favorite_count = tweet.favorite_count,
-                t.filter_level = tweet.filter_level,
-                t.lang = tweet.lang
-                t.hashtags = tweet.hashtags
+                t.lang = tweet.lang,
+                t.hashtags = tweet.hashtags,
                 t.user_mentions = tweet.user_mentions
             MERGE (u:User {id: tweet.userId})
             ON CREATE SET 
@@ -170,7 +168,7 @@ async fn run_insert_with_txn(
                 u.statuses_count = tweet.userStatusesCount,
                 u.created_at = tweet.userCreatedAt,
                 u.utc_offset = tweet.userUtcOffset
-            CREATE (t)-[:CREATED_BY]->(u)
+            CREATE (t)-[:POSTED_BY]->(u)
             ",
         )
         .param("batch", batch),
@@ -183,17 +181,57 @@ async fn run_insert_with_txn(
     Ok(())
 }
 
-pub async fn link_tweets(creds: Credentials) -> Result<(), neo4rs::Error> {
+pub async fn add_replies_to_relation(creds: Credentials) -> Result<(), neo4rs::Error> {
     println!("Linking tweets together...");
     let graph = Graph::new(creds.uri, creds.user, creds.password)
         .await
         .unwrap();
 
     let mut txn = graph.start_txn().await?;
-    // Run this BEFORE starting any imports to ensure uniqueness of users
     txn.run(query(
         "
-        MATCH (t: Tweet) CREATE (r: Tweet {reply_to: t.id})-[:REPLIES_TO]->(t);
+        CALL apoc.periodic.iterate(
+          '
+          MATCH (t1:Tweet)
+          WHERE t1.reply_to IS NOT NULL
+          RETURN t1
+          ',
+          '
+          MATCH (t2:Tweet {id: t1.reply_to})
+          MERGE (t1)-[:REPLIES_TO]->(t2)
+          ',
+          {batchSize: 10000, parallel: false}
+        );
+        ",
+    ))
+    .await
+    .unwrap();
+
+    txn.commit().await?;
+
+    Ok(())
+}
+
+pub async fn add_user_mention_relation(creds: Credentials) -> Result<(), neo4rs::Error> {
+    println!("Adding user mentions...");
+    let graph = Graph::new(creds.uri, creds.user, creds.password)
+        .await
+        .unwrap();
+
+    let mut txn = graph.start_txn().await?;
+    txn.run(query(
+        "
+        CALL apoc.periodic.iterate(
+          '
+          match (t: Tweet) with t, 
+          t.user_mentions as m UNWIND m as uid 
+          match (u: User {id: uid}) return t, u
+          ',
+          '
+          MERGE (t)-[:MENTIONS]->(u)
+          ',
+          {batchSize: 10000, parallel: false}
+        );
         ",
     ))
     .await
@@ -220,13 +258,8 @@ fn prepare_batch_parameters(chunk_vec: Vec<json::Tweet>) -> Vec<HashMap<String, 
             );
             tweet_map.insert("reply_to".to_string(), tweet.reply_to.clone().into());
             tweet_map.insert("quote_count".to_string(), tweet.quote_count.into());
-            tweet_map.insert("reply_count".to_string(), tweet.reply_count.into());
             tweet_map.insert("retweet_count".to_string(), tweet.retweet_count.into());
             tweet_map.insert("favorite_count".to_string(), tweet.favorite_count.into());
-            tweet_map.insert(
-                "filter_level".to_string(),
-                tweet.filter_level.clone().into(),
-            );
             tweet_map.insert("lang".to_string(), tweet.lang.clone().into());
             tweet_map.insert(
                 "hashtags".to_string(),
