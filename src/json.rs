@@ -34,6 +34,8 @@ pub struct Tweet {
     pub favorite_count: u32,
     pub lang: String,
     pub entities: Entity,
+    #[serde(default)]
+    pub is_retweet: bool,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -44,14 +46,17 @@ pub struct Entity {
     pub user_mentions: Vec<String>,
 }
 
-pub fn parse_file(filename: String) -> (Vec<Tweet>, u32) {
+pub fn parse_file(filename: String) -> (Vec<Tweet>, u32, u64, u32) {
     println!("Parsing file {}", filename);
     let file = File::open(filename).unwrap();
     let reader = BufReader::new(file);
     let mut tweets = vec![];
     let mut deleted = 0;
+    let mut tweet_num: u64 = 0;
+    let mut retweet_num = 0;
 
     for line in reader.lines() {
+        tweet_num += 1;
         let content = line.unwrap();
         if content.contains("\"delete\":") {
             deleted += 1;
@@ -59,11 +64,17 @@ pub fn parse_file(filename: String) -> (Vec<Tweet>, u32) {
         }
 
         match serde_json::from_str::<Tweet>(&content) {
-            Ok(tweet) => tweets.push(tweet),
+            Ok(mut tweet) => {
+                if content.contains("\"retweeted_status\":") {
+                    retweet_num += 1;
+                    tweet.is_retweet = true;
+                }
+                tweets.push(tweet);
+            }
             Err(e) => eprintln!("Failed to parse line: {}", e),
         }
     }
-    return (tweets, deleted);
+    return (tweets, deleted, tweet_num, retweet_num);
 }
 
 fn deserialize_twitter_date<'de, D>(deserializer: D) -> Result<DateTime<Utc>, D::Error>
