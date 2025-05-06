@@ -150,9 +150,6 @@ async fn run_insert_with_txn(
                 t.text = tweet.text,
                 t.created_at = tweet.created_at,
                 t.reply_to = tweet.reply_to,
-                t.quote_count = tweet.quote_count,
-                t.retweet_count = tweet.retweet_count,
-                t.favorite_count = tweet.favorite_count,
                 t.lang = tweet.lang,
                 t.hashtags = tweet.hashtags,
                 t.user_mentions = tweet.user_mentions
@@ -257,9 +254,6 @@ fn prepare_batch_parameters(chunk_vec: Vec<json::Tweet>) -> Vec<HashMap<String, 
                 tweet.created_at.to_rfc3339().into(),
             );
             tweet_map.insert("reply_to".to_string(), tweet.reply_to.clone().into());
-            tweet_map.insert("quote_count".to_string(), tweet.quote_count.into());
-            tweet_map.insert("retweet_count".to_string(), tweet.retweet_count.into());
-            tweet_map.insert("favorite_count".to_string(), tweet.favorite_count.into());
             tweet_map.insert("lang".to_string(), tweet.lang.clone().into());
             tweet_map.insert(
                 "hashtags".to_string(),
