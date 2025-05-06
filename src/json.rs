@@ -12,7 +12,7 @@ pub struct User {
     pub verified: bool,
     pub followers_count: i32,
     pub friends_count: i32,
-    pub listed_count: i32,
+    pub listed_count: Option<i32>,
     pub favourites_count: i32,
     pub statuses_count: i32,
     #[serde(deserialize_with = "deserialize_twitter_date")]
@@ -68,7 +68,9 @@ pub fn parse_file(filename: String) -> (Vec<Tweet>, u32, u64, u32) {
                 }
                 tweets.push(tweet);
             }
-            Err(e) => eprintln!("Failed to parse line: {}", e),
+            Err(e) => {
+                eprintln!("Failed to parse line: {}\n {}", e, content);
+            }
         }
     }
     return (tweets, deleted, tweet_num, retweet_num);
