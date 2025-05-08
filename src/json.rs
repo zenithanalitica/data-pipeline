@@ -1,8 +1,10 @@
 use chrono::{DateTime, Utc};
+use lines;
+use lines::linereader::LineReader;
 use serde::Deserialize;
 use serde_json;
 use std::fs::File;
-use std::io::{BufReader, prelude::*};
+use std::str::from_utf8;
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct User {
@@ -45,16 +47,17 @@ pub struct Entity {
 
 pub fn parse_file(filename: String) -> (Vec<Tweet>, u32, u64, u32) {
     println!("Parsing file {}", filename);
-    let file = File::open(filename).unwrap();
-    let reader = BufReader::new(file);
+
+    let file = File::open(filename.clone()).unwrap();
+
     let mut tweets = vec![];
     let mut deleted = 0;
     let mut tweet_num: u64 = 0;
     let mut retweet_num = 0;
 
-    for line in reader.lines() {
+    lines::read_lines!(line in LineReader::new(file), {
         tweet_num += 1;
-        let content = line.unwrap();
+        let content = from_utf8(line.unwrap()).unwrap();
         if content.contains("\"delete\":") {
             deleted += 1;
             continue;
@@ -69,10 +72,10 @@ pub fn parse_file(filename: String) -> (Vec<Tweet>, u32, u64, u32) {
                 tweets.push(tweet);
             }
             Err(e) => {
-                eprintln!("Failed to parse line: {}\n {}", e, content);
+                eprintln!("Failed to parse file {} \nline: {}\n {}", filename, e, content);
             }
         }
-    }
+    });
     return (tweets, deleted, tweet_num, retweet_num);
 }
 
