@@ -11,9 +11,20 @@ use tokio::sync::Semaphore;
 
 use crate::json;
 
-const AIRLINE_IDS: [u64; 13] = [
-    56377143, 106062176, 18332190, 22536055, 124476322, 26223583, 2182373406, 38676903, 1542862735,
-    253340062, 218730857, 45621423, 20626359,
+const AIRLINE_IDS: [&str; 13] = [
+    "56377143",   // KLM
+    "106062176",  // Air France
+    "18332190",   // British Airways
+    "22536055",   // American Air
+    "124476322",  // Lufthansa
+    "26223583",   // AirBerlin
+    "2182373406", // AirBerlin assist
+    "38676903",   // EasyJet
+    "1542862735", // Ryanair
+    "253340062",  // Singapore Air
+    "218730857",  // Qantas
+    "45621423",   // Edihad Airways
+    "20626359",   // Virgin Atlantic
 ];
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -257,8 +268,8 @@ pub async fn add_airline_labels(creds: Credentials) -> Result<(), neo4rs::Error>
     let query = format!(
         "
     WITH {:?} AS ids
-    MATCH (n)
-    WHERE id(n) IN ids
+    MATCH (n:User)
+    WHERE n.id IN ids
     SET n:Airline
         ",
         AIRLINE_IDS
