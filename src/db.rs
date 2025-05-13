@@ -5,10 +5,16 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
+use std::u8;
 use tokio;
 use tokio::sync::Semaphore;
 
 use crate::json;
+
+const AIRLINE_IDS: [u64; 13] = [
+    56377143, 106062176, 18332190, 22536055, 124476322, 26223583, 2182373406, 38676903, 1542862735,
+    253340062, 218730857, 45621423, 20626359,
+];
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Credentials {
@@ -161,12 +167,14 @@ async fn run_insert_with_txn(
                 u.followers_count = tweet.userFollowersCount,
                 u.friends_count = tweet.userFriendsCount,
                 u.listed_count = tweet.userListedCount,
-                u.favourites_count = tweet.userFavouritesCount,
+                u.favourites_count = tweet.userFavouritesCount, 
                 u.statuses_count = tweet.userStatusesCount,
                 u.created_at = tweet.userCreatedAt,
                 u.utc_offset = tweet.userUtcOffset
             CREATE (t)-[:POSTED_BY]->(u)
-            ",
+            ", // listed_count -> on how many lists they are
+               // favourites_count -> how many tweets they liked in lifetime
+               // statuses_count -> how many tweets they posted
         )
         .param("batch", batch),
     )
@@ -233,6 +241,30 @@ pub async fn add_user_mention_relation(creds: Credentials) -> Result<(), neo4rs:
     ))
     .await
     .unwrap();
+
+    txn.commit().await?;
+
+    Ok(())
+}
+
+pub async fn add_airline_labels(creds: Credentials) -> Result<(), neo4rs::Error> {
+    println!("Adding airline labels...");
+    let graph = Graph::new(creds.uri, creds.user, creds.password)
+        .await
+        .unwrap();
+
+    let mut txn = graph.start_txn().await?;
+    let query = format!(
+        "
+    WITH {:?} AS ids
+    MATCH (n)
+    WHERE id(n) IN ids
+    SET n:Airline
+        ",
+        AIRLINE_IDS
+    );
+
+    txn.run(neo4rs::query(&query)).await.unwrap();
 
     txn.commit().await?;
 

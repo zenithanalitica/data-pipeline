@@ -45,6 +45,9 @@ impl App {
         db::add_user_mention_relation(self.credentials.clone())
             .await
             .unwrap();
+        db::add_airline_labels(self.credentials.clone())
+            .await
+            .unwrap();
         println!("Done!")
     }
 
