@@ -27,6 +27,7 @@ pub struct Tweet {
     #[serde(deserialize_with = "deserialize_twitter_date")]
     pub created_at: DateTime<Utc>,
     pub id_str: String,
+    #[serde(skip)]
     pub text: String,
     pub user: User,
     #[serde(rename = "in_reply_to_status_id_str")]
@@ -69,6 +70,8 @@ pub fn parse_file(filename: String) -> (Vec<Tweet>, u32, u64, u32) {
                     retweet_num += 1;
                     tweet.is_retweet = true;
                 }
+                let json_value: serde_json::Value = serde_json::from_str(content).unwrap();
+                tweet.text = extract_text(&json_value);
                 tweets.push(tweet);
             }
             Err(e) => {
@@ -120,4 +123,18 @@ where
         })
         .collect();
     Ok(hashtags)
+}
+
+fn extract_text(json: &serde_json::Value) -> String {
+    if let Some(retweet) = json.get("retweeted_status") {
+        if let Some(extended_tweet) = retweet.get("extended_tweet") {
+            return extended_tweet.get("full_text").unwrap().to_string();
+        }
+        return retweet.get("text").unwrap().to_string();
+    } else {
+        if let Some(extended_tweet) = json.get("extended_tweet") {
+            return extended_tweet.get("full_text").unwrap().to_string();
+        }
+        return json.get("text").unwrap().to_string();
+    }
 }
