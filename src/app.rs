@@ -1,6 +1,7 @@
 use confy;
 use glob::glob;
 use rayon::prelude::*;
+use std::process::exit;
 use std::sync::{Arc, Mutex};
 
 use crate::db;
@@ -15,12 +16,19 @@ pub struct App {
 
 impl App {
     pub async fn run(&mut self) {
-        db::prepare_database(self.credentials.clone())
-            .await
-            .unwrap();
+        let res = db::prepare_database(self.credentials.clone()).await;
+
+        match res {
+            Ok(_) => (),
+            Err(e) => {
+                eprintln!("{}", e);
+                eprintln!("Could not connect to the database. Check if it's running.");
+                exit(1)
+            }
+        }
 
         // For the async function, we need to collect results and process them after parallel execution
-        let files: Vec<_> = glob("../data/airlines-*.json")
+        let files: Vec<_> = glob("../demo/data/airlines-*.json")
             .expect("Failed to read glob pattern")
             .filter_map(Result::ok)
             .collect();
