@@ -37,7 +37,7 @@ pub struct Credentials {
 impl ::std::default::Default for Credentials {
     fn default() -> Self {
         Self {
-            uri: String::from("localhost:7676"),
+            uri: String::from("neo4j:7687"),
             user: String::from("neo4j"),
             password: String::from("neo4j"),
         }
