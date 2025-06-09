@@ -28,7 +28,7 @@ impl App {
         }
 
         // For the async function, we need to collect results and process them after parallel execution
-        let files: Vec<_> = glob("../demo/data/airlines-*.json")
+        let files: Vec<_> = glob("/data/airlines-*.json")
             .expect("Failed to read glob pattern")
             .filter_map(Result::ok)
             .collect();
