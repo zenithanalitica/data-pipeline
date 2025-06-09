@@ -29,19 +29,9 @@ const AIRLINE_IDS: [&str; 13] = [
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Credentials {
-    uri: String,
-    user: String,
-    password: String,
-}
-
-impl ::std::default::Default for Credentials {
-    fn default() -> Self {
-        Self {
-            uri: String::from("neo4j:7687"),
-            user: String::from("neo4j"),
-            password: String::from("neo4j"),
-        }
-    }
+    pub uri: String,
+    pub user: String,
+    pub password: String,
 }
 
 pub async fn prepare_database(creds: Credentials) -> Result<(), neo4rs::Error> {

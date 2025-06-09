@@ -1,10 +1,10 @@
-use confy;
 use glob::glob;
 use rayon::prelude::*;
+use std::env::{self, VarError};
 use std::process::exit;
 use std::sync::{Arc, Mutex};
 
-use crate::db;
+use crate::db::{self, Credentials};
 use crate::json;
 
 pub struct App {
@@ -99,7 +99,8 @@ impl App {
 
 impl Default for App {
     fn default() -> Self {
-        let credentials: db::Credentials = confy::load_path("./credentials.toml").unwrap();
+        let credentials: db::Credentials =
+            get_credentials_from_env().expect("Could not load environment variable");
         Self {
             credentials,
             tweet_count: Default::default(),
@@ -107,4 +108,16 @@ impl Default for App {
             retweet_count: Default::default(),
         }
     }
+}
+
+fn get_credentials_from_env() -> Result<db::Credentials, VarError> {
+    let uri = env::var("NEO4J_URI")?;
+    let user = env::var("NEO4J_USERNAME")?;
+    let password = env::var("NEO4J_PASSWORD")?;
+
+    Ok(Credentials {
+        uri,
+        user,
+        password,
+    })
 }
